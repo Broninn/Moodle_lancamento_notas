@@ -1,39 +1,51 @@
-# Moodle Local Plugin: Lançamento de Notas Aleatórias
+## Moodle Local Plugin — Lançamento de Notas Aleatórias
 
-Este projeto é um plugin local para Moodle, desenvolvido para facilitar o lançamento automático de notas em ambientes de testes. **Não deve ser utilizado em ambientes de produção.**
+Plugin local para automatizar lançamentos de notas em ambientes de teste/homologação.
 
-## Objetivo
-Automatizar o lançamento de notas aleatórias para usuários, útil para cenários de teste e homologação.
+Principais pontos
+- Compatibilidade: Moodle 4.5+ (testado até 5.1)
+- Uso: somente em ambientes de teste. Não usar em produção.
 
-## Requisitos
-- Moodle 4.5 ou superior
-- Permissão de administrador (`moodle/site:config`)
+Como funciona (resumo)
+- Ao submeter `local/lancamento_notas/index.php` com um `userid`, o plugin:
+   1. Busca os cursos em que o usuário está matriculado.
+   2. Para cada curso, localiza `grade_items` cujo `idnumber` casa com o regex `(AE|RE)[0-9](A|R)[0-9]$|RF3R1`.
+   3. Cria registros-placeholder em `mdl_grade_grades` (com `finalgrade=NULL`) para os itens que ainda não têm registro.
+   4. Atualiza (lança) notas aleatórias (0.0–5.9) apenas nos registros com `finalgrade IS NULL`.
 
-## Como funciona
-1. Acesse a página do plugin (`local/lancamento_notas/index.php`).
-2. Informe o ID do usuário desejado.
-3. O plugin irá lançar notas aleatórias (de 0.0 a 5.9) para todos os itens de nota que:
-   - Possuem `finalgrade` nulo
-   - Têm `idnumber` compatível com o regex: `(AE|RE)[0-9](A|R)[0-9]$|RF3R1`
-   - São do tipo `category`
+Comportamento e segurança
+- Processamento em blocos: por segurança o plugin processa um número limitado de itens por execução (padrão 50). Se houver muitos itens, execute o formulário múltiplas vezes.
+- O plugin libera o lock de sessão (`session_write_close()`) antes do processamento para não bloquear navegação de outros usuários.
+- O plugin verifica se já existe um registro em `mdl_grade_grades` antes de criar para evitar operações desnecessárias.
 
-## Instalação
-1. Copie os arquivos para o diretório `local/lancamento_notas` do seu Moodle.
-2. Acesse o ambiente Moodle para concluir a instalação do plugin.
+Consulta de verificação recomendada
+Use esta query para checar registros do usuário em um curso específico:
 
-## Aviso Importante
-- **Uso exclusivo para ambientes de teste.**
-- Não há garantias ou suporte para uso em produção.
-- O plugin pode sobrescrever notas existentes em itens compatíveis.
+```
+SELECT gi.id, gi.courseid, gi.idnumber
+FROM mdl_grade_grades gg
+JOIN mdl_grade_items gi ON gi.id = gg.itemid
+WHERE gg.userid = :userid
+   AND gi.courseid = :courseid
+   AND gi.idnumber ~ '((AE|RE)[0-9](A|R)[0-9]$|RF3R1)';
+```
 
-## Arquivos principais
-- `index.php`: Interface web para lançamento de notas.
-- `lib.php`: Lógica principal de atualização de notas.
-- `version.php`: Metadados do plugin.
-- `settings.php`: Reservado para configurações futuras.
+Instalação
+1. Coloque a pasta `lancamento_notas` em `local/` do Moodle.
+2. Acesse Administração → Notificações para concluir a instalação.
 
-## Autor
+Testes rápidos
+1. Adicione um usuário de teste a um curso que contenha `grade_items` com o `idnumber` desejado.
+2. Acesse `local/lancamento_notas/index.php`, informe o `userid` e submeta.
+3. A página exibirá quantos registros foram criados/pulados e quantas notas foram lançadas.
+4. Verifique `mdl_grade_grades` com a query acima.
+
+Arquivos principais
+- `index.php`: UI e fluxo (chama `ensure` e `atualizar`).
+- `lib.php`: `local_lancamento_notas_ensure_grade_rows()` e `local_lancamento_notas_atualizar()`.
+
+Aviso legal
+Este plugin altera dados de notas — use apenas em ambientes de homologação.
+
+Autor
 Bruno Henrique da Silva Mosko
-
----
-Plugin desenvolvido para fins de homologação e testes internos.
